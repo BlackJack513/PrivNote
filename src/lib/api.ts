@@ -66,4 +66,9 @@ export const api = {
 
   reveal: (vault: string, rel: string) =>
     invoke<void>("reveal_in_explorer", { vault, rel }),
+
+  webFetch: (url: string) =>
+    invoke<{ title: string; text: string; url: string }>("web_fetch", { url }),
+  webSearch: (query: string) =>
+    invoke<{ title: string; url: string; snippet: string }[]>("web_search", { query }),
 };

@@ -129,16 +129,14 @@ pub fn ai_set_settings(
     save_config(&app, &cfg)
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChatMsg {
-    pub role: String,
-    pub content: String,
-}
-
 /// 由 Rust 侧代理调用 OpenAI 兼容的 /chat/completions（API Key 不暴露给前端）。
+/// 返回 choice 的完整 message（可能含 content / tool_calls），便于前端做工具循环。
 #[tauri::command]
-pub async fn ai_chat(app: AppHandle, messages: Vec<ChatMsg>) -> Result<String, String> {
+pub async fn ai_chat(
+    app: AppHandle,
+    messages: Vec<serde_json::Value>,
+    tools: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
     let cfg = load_config(&app);
     let base = cfg
         .ai
@@ -168,12 +166,15 @@ pub async fn ai_chat(app: AppHandle, messages: Vec<ChatMsg>) -> Result<String, S
         .build()
         .map_err(|e| format!("创建网络客户端失败：{e}"))?;
 
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "model": model,
         "messages": messages,
         "stream": false,
-        "temperature": 0.7,
     });
+    if let Some(t) = tools {
+        body["tools"] = t;
+        body["tool_choice"] = serde_json::json!("auto");
+    }
 
     let resp = client
         .post(format!("{base}/chat/completions"))
@@ -200,12 +201,23 @@ pub async fn ai_chat(app: AppHandle, messages: Vec<ChatMsg>) -> Result<String, S
 
     let v: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("解析响应失败：{e}"))?;
-    let content = v["choices"][0]["message"]["content"]
-        .as_str()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .ok_or("AI 返回内容为空，请重试")?;
-    Ok(content)
+    let message = v["choices"][0]["message"].clone();
+    if message.is_null() {
+        return Err("AI 未返回有效内容".into());
+    }
+    Ok(message)
+}
+
+/// 抓取网页正文（AI 联网工具）。
+#[tauri::command]
+pub async fn web_fetch(url: String) -> Result<crate::web::FetchResult, String> {
+    crate::web::fetch_url(&url).await
+}
+
+/// 网页搜索（AI 联网工具，DuckDuckGo 尽力而为）。
+#[tauri::command]
+pub async fn web_search(query: String) -> Result<Vec<crate::web::SearchResult>, String> {
+    crate::web::search_web(&query).await
 }
 
 #[tauri::command]

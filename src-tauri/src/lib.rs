@@ -1,6 +1,7 @@
 mod commands;
 mod protocol;
 mod vault;
+mod web;
 
 use protocol::SharedVault;
 use std::sync::{Arc, Mutex};
@@ -37,7 +38,9 @@ pub fn run() {
             commands::search,
             commands::backlinks,
             commands::list_notes,
-            commands::reveal_in_explorer
+            commands::reveal_in_explorer,
+            commands::web_fetch,
+            commands::web_search
         ])
         .setup(|app| {
             // 记录上次使用的 vault，便于协议处理器读取
