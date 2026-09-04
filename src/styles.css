@@ -1061,3 +1061,337 @@ button {
     opacity: 0.25;
   }
 }
+
+/* ---------- AI 助手面板 ---------- */
+
+.ai-col {
+  width: 360px;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+}
+
+.ai-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.ai-title {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.ai-key-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex: none;
+}
+.ai-key-dot.ok {
+  background: var(--ok);
+}
+.ai-model {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 10px 0;
+}
+.ai-tabs button {
+  flex: 1;
+  height: 28px;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.ai-tabs button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.ai-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+.ai-empty {
+  color: var(--text-3);
+  text-align: center;
+  font-size: 12.5px;
+  padding: 30px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.ai-empty svg {
+  color: var(--accent);
+}
+.ai-empty p {
+  margin: 0;
+  line-height: 1.8;
+  max-width: 280px;
+}
+
+.ai-msg {
+  max-width: 100%;
+}
+.ai-msg.user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 12px 12px 4px 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  max-width: 88%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ai-msg.assistant {
+  align-self: stretch;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px 12px 12px 4px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.ai-user-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ai-waiting {
+  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.ai-msg-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.ai-msg-actions .action-btn {
+  font-size: 11.5px;
+  height: 24px;
+}
+.ai-err {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: var(--danger);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.ai-input-area {
+  border-top: 1px solid var(--border);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-check {
+  font-size: 12px;
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+.ai-input-area textarea {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-size: 13px;
+  resize: vertical;
+  outline: none;
+  font-family: inherit;
+  color: var(--text);
+  background: #fff;
+  line-height: 1.6;
+}
+.ai-input-area textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}
+.ai-send {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ai-send:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+.ai-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ai-gen-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.ai-gen-input {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  resize: vertical;
+  outline: none;
+  font-family: inherit;
+  color: var(--text);
+  background: #fff;
+  line-height: 1.6;
+}
+.ai-gen-input:focus {
+  border-color: var(--accent);
+}
+.ai-gen-result {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.ai-save-form {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  align-items: center;
+}
+.ai-save-form input {
+  flex: 1;
+  height: 30px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 0 9px;
+  font-size: 12.5px;
+  outline: none;
+  min-width: 0;
+}
+
+.ai-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: center;
+  margin: 8px 0 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.ai-clear:hover {
+  color: var(--danger);
+}
+
+/* AI 回复中的 Markdown 排版 */
+.ai-md {
+  line-height: 1.75;
+  word-break: break-word;
+}
+.ai-md h1,
+.ai-md h2,
+.ai-md h3,
+.ai-md h4 {
+  margin: 0.7em 0 0.35em;
+  font-size: 1.15em;
+}
+.ai-md h1 {
+  font-size: 1.3em;
+}
+.ai-md p {
+  margin: 0.4em 0;
+}
+.ai-md ul,
+.ai-md ol {
+  margin: 0.3em 0;
+  padding-left: 1.4em;
+}
+.ai-md code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: #eef0f4;
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.ai-md pre {
+  background: #1e2430;
+  color: #e6e9ef;
+  padding: 9px 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  margin: 0.5em 0;
+}
+.ai-md pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+.ai-md table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 12.5px;
+}
+.ai-md th,
+.ai-md td {
+  border: 1px solid var(--border-strong);
+  padding: 4px 9px;
+}
+.ai-md th {
+  background: var(--panel-2);
+}
+.ai-md a {
+  color: var(--accent);
+}
+.ai-md blockquote {
+  border-left: 3px solid var(--border-strong);
+  margin: 0.4em 0;
+  padding: 0.1em 0.8em;
+  color: var(--text-2);
+}

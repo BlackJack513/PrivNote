@@ -18,6 +18,7 @@
 - **全文搜索**：按文件名 + 内容关键词实时搜索，命中行高亮，点击跳转
 - **双链**：写作模式输入 `[[笔记标题]]` 自动高亮，点击跳转（不存在时一键创建）；右侧面板显示「引用出去 / 反向链接」
 - **简体中文界面**
+- **AI 写作助手（DeepSeek / OpenAI 兼容）**：绑定自己的 API Key；对话面板可附上当前笔记提问，回答一键追加到笔记或另存为新笔记；「写一篇」可按主题直接生成整篇 Markdown 笔记
 
 ## 开发
 
@@ -48,6 +49,13 @@ src-tauri/          Rust 后端
   src/protocol.rs   privnote:// 自定义协议（预览库内图片）
 scripts/icon-gen.ps1  书本图标生成脚本（System.Drawing，纯 ASCII）
 ```
+
+## AI 助手配置
+
+1. 打开应用后点击顶栏 ✨（或 AI 面板里的 ⚙）进入 AI 设置
+2. 填入你自己的 **API Key**（默认发送到 DeepSeek 官方 `https://api.deepseek.com`）
+3. Base URL / 模型名都可改，兼容任意 OpenAI 风格服务；想用 `deepseek-v4-flash` 等模型直接把“模型名”改成对应名称
+4. Key 保存在本机应用配置 `config.json`，请求由 Rust 后端直接发出，Key 不暴露给前端页面
 
 ## 数据说明
 

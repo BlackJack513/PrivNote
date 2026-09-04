@@ -45,6 +45,9 @@ interface StoreState {
   showRight: boolean;
   setShowRight: (v: boolean) => void;
 
+  showAi: boolean;
+  setShowAi: (v: boolean) => void;
+
   // actions
   init: () => Promise<void>;
   openVault: (path: string) => Promise<void>;
@@ -58,6 +61,7 @@ interface StoreState {
   activateTab: (rel: string) => void;
   setTabMode: (rel: string, mode: EditorMode) => void;
   setContent: (rel: string, content: string) => void;
+  appendToActive: (md: string) => boolean;
   flushAll: () => Promise<void>;
   flushRel: (rel: string) => Promise<void>;
 
@@ -150,6 +154,9 @@ export const useStore = create<StoreState>()((set, get) => {
     linksOut: [],
     showRight: true,
     setShowRight: (v) => set({ showRight: v }),
+
+    showAi: false,
+    setShowAi: (v) => set({ showAi: v }),
 
     init: async () => {
       try {
@@ -278,6 +285,22 @@ export const useStore = create<StoreState>()((set, get) => {
         ),
       }));
       scheduleSave(rel);
+    },
+
+    appendToActive: (md) => {
+      const { tabs, activeRel } = get();
+      const i = tabs.findIndex((t) => t.rel === activeRel);
+      if (i < 0 || !md.trim()) return false;
+      const cur = tabs[i].content;
+      const sep = cur.endsWith("\n") ? "\n" : "\n\n";
+      const next = cur.trimEnd() + sep + md.trim() + "\n";
+      set((s) => ({
+        tabs: s.tabs.map((tab, idx) =>
+          idx === i ? { ...tab, content: next, dirty: next !== tab.savedContent } : tab,
+        ),
+      }));
+      scheduleSave(activeRel!);
+      return true;
     },
 
     flushRel: async (rel) => {

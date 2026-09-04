@@ -33,6 +33,17 @@ export interface AppConfig {
   lastVault?: string | null;
 }
 
+export interface AiSettingsView {
+  baseUrl: string;
+  model: string;
+  apiKeySet: boolean;
+}
+
+export interface AiMsg {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
 export type EditorMode = "wysiwyg" | "source";
 
 export interface TabState {
@@ -53,7 +64,14 @@ export interface WikiLinkOut {
 }
 
 export interface ModalState {
-  kind: "newNote" | "newFolder" | "rename" | "confirmDelete" | "wikiCreate" | "switchVault";
+  kind:
+    | "newNote"
+    | "newFolder"
+    | "rename"
+    | "confirmDelete"
+    | "wikiCreate"
+    | "switchVault"
+    | "aiSettings";
   folder?: string; // 新建/导入目标文件夹（vault 相对路径）
   rel?: string; // rename / delete 目标
   prefill?: string; // 新建笔记预填名称

@@ -1,4 +1,4 @@
-import { FileText, X, FolderInput, RefreshCw, PanelRight } from "lucide-react";
+import { FileText, X, FolderInput, RefreshCw, PanelRight, Sparkles } from "lucide-react";
 import { useStore } from "../store";
 
 export default function TabBar() {
@@ -11,6 +11,8 @@ export default function TabBar() {
   const setModal = useStore((s) => s.setModal);
   const showRight = useStore((s) => s.showRight);
   const setShowRight = useStore((s) => s.setShowRight);
+  const showAi = useStore((s) => s.showAi);
+  const setShowAi = useStore((s) => s.setShowAi);
 
   return (
     <div className="tabbar">
@@ -68,6 +70,13 @@ export default function TabBar() {
         </button>
         <button className="icon-btn" title="切换笔记库文件夹" onClick={() => setModal({ kind: "switchVault" })}>
           <FolderInput size={15} />
+        </button>
+        <button
+          className={`icon-btn ${showAi ? "on" : ""}`}
+          title={showAi ? "收起 AI 助手" : "打开 AI 助手（DeepSeek）"}
+          onClick={() => setShowAi(!showAi)}
+        >
+          <Sparkles size={15} />
         </button>
         <button
           className={`icon-btn ${showRight ? "on" : ""}`}

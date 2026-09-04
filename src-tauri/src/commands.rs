@@ -7,9 +7,34 @@ use tauri::{AppHandle, Manager};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct AppConfig {
-    pub last_vault: Option<String>,
+pub struct AiConfig {
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub api_key: Option<String>,
 }
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AppConfig {
+    #[serde(default)]
+    pub last_vault: Option<String>,
+    #[serde(default)]
+    pub ai: AiConfig,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AiSettingsView {
+    pub base_url: String,
+    pub model: String,
+    pub api_key_set: bool,
+}
+
+pub const DEFAULT_AI_BASE: &str = "https://api.deepseek.com";
+pub const DEFAULT_AI_MODEL: &str = "deepseek-chat";
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
@@ -19,28 +44,168 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("config.json"))
 }
 
+fn load_config(app: &AppHandle) -> AppConfig {
+    let p = match config_path(app) {
+        Ok(p) => p,
+        Err(_) => return AppConfig::default(),
+    };
+    if !p.exists() {
+        return AppConfig::default();
+    }
+    let data = match fs::read_to_string(&p) {
+        Ok(d) => d,
+        Err(_) => return AppConfig::default(),
+    };
+    serde_json::from_str(&data).unwrap_or_default()
+}
+
+fn save_config(app: &AppHandle, cfg: &AppConfig) -> Result<(), String> {
+    let p = config_path(app)?;
+    if let Some(dir) = p.parent() {
+        fs::create_dir_all(dir).map_err(|e| format!("创建配置目录失败：{e}"))?;
+    }
+    let data = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
+    fs::write(&p, data).map_err(|e| format!("保存配置失败：{e}"))
+}
+
 #[tauri::command]
 pub fn get_config(app: AppHandle) -> Result<AppConfig, String> {
-    let p = config_path(&app)?;
-    if !p.exists() {
-        return Ok(AppConfig::default());
-    }
-    let data = fs::read_to_string(&p).map_err(|e| format!("读取配置失败：{e}"))?;
-    let cfg: AppConfig = serde_json::from_str(&data).unwrap_or_default();
-    Ok(cfg)
+    Ok(load_config(&app))
 }
 
 #[tauri::command]
 pub fn set_last_vault(app: AppHandle, vault: String) -> Result<(), String> {
     let st = app.state::<crate::protocol::SharedVault>();
     *st.0.lock().unwrap() = Some(vault.clone());
-    let p = config_path(&app)?;
-    if let Some(dir) = p.parent() {
-        fs::create_dir_all(dir).map_err(|e| format!("创建配置目录失败：{e}"))?;
+    let mut cfg = load_config(&app);
+    cfg.last_vault = Some(vault);
+    save_config(&app, &cfg)
+}
+
+/// 返回 AI 设置视图（不回传已保存的密钥原文）。
+#[tauri::command]
+pub fn ai_get_settings(app: AppHandle) -> Result<AiSettingsView, String> {
+    let cfg = load_config(&app);
+    let base = cfg
+        .ai
+        .base_url
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_AI_BASE.to_string());
+    let model = cfg
+        .ai
+        .model
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_AI_MODEL.to_string());
+    let api_key_set = cfg
+        .ai
+        .api_key
+        .as_ref()
+        .map(|k| !k.trim().is_empty())
+        .unwrap_or(false);
+    Ok(AiSettingsView { base_url: base, model, api_key_set })
+}
+
+/// 保存 AI 设置。api_key 传 Some(值) 表示设置/覆盖，Some("") 表示清除，None 表示保持不变。
+#[tauri::command]
+pub fn ai_set_settings(
+    app: AppHandle,
+    base_url: Option<String>,
+    model: Option<String>,
+    api_key: Option<String>,
+) -> Result<(), String> {
+    let mut cfg = load_config(&app);
+    if let Some(b) = base_url {
+        let t = b.trim().trim_end_matches('/').to_string();
+        cfg.ai.base_url = if t.is_empty() { None } else { Some(t) };
     }
-    let cfg = AppConfig { last_vault: Some(vault) };
-    let data = serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?;
-    fs::write(&p, data).map_err(|e| format!("保存配置失败：{e}"))
+    if let Some(m) = model {
+        let t = m.trim().to_string();
+        cfg.ai.model = if t.is_empty() { None } else { Some(t) };
+    }
+    if let Some(k) = api_key {
+        let t = k.trim().to_string();
+        cfg.ai.api_key = if t.is_empty() { None } else { Some(t) };
+    }
+    save_config(&app, &cfg)
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatMsg {
+    pub role: String,
+    pub content: String,
+}
+
+/// 由 Rust 侧代理调用 OpenAI 兼容的 /chat/completions（API Key 不暴露给前端）。
+#[tauri::command]
+pub async fn ai_chat(app: AppHandle, messages: Vec<ChatMsg>) -> Result<String, String> {
+    let cfg = load_config(&app);
+    let base = cfg
+        .ai
+        .base_url
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_AI_BASE.to_string())
+        .trim_end_matches('/')
+        .to_string();
+    let model = cfg
+        .ai
+        .model
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_AI_MODEL.to_string());
+    let key = cfg
+        .ai
+        .api_key
+        .map(|k| k.trim().to_string())
+        .filter(|k| !k.is_empty())
+        .ok_or("尚未配置 AI API Key，请先在设置里填写")?;
+
+    if messages.is_empty() {
+        return Err("消息为空".into());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(240))
+        .build()
+        .map_err(|e| format!("创建网络客户端失败：{e}"))?;
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "stream": false,
+        "temperature": 0.7,
+    });
+
+    let resp = client
+        .post(format!("{base}/chat/completions"))
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {key}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("请求 AI 服务失败：{e}"))?;
+
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取响应失败：{e}"))?;
+
+    if !status.is_success() {
+        let detail = serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| text.chars().take(300).collect());
+        return Err(format!("AI 服务返回 {status}: {detail}"));
+    }
+
+    let v: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("解析响应失败：{e}"))?;
+    let content = v["choices"][0]["message"]["content"]
+        .as_str()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or("AI 返回内容为空，请重试")?;
+    Ok(content)
 }
 
 #[tauri::command]

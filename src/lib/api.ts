@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AiSettingsView,
   AppConfig,
   Backlink,
   NoteRef,
@@ -20,6 +21,18 @@ export function errMsg(e: unknown): string {
 export const api = {
   getConfig: () => invoke<AppConfig>("get_config"),
   setLastVault: (vault: string) => invoke<void>("set_last_vault", { vault }),
+
+  aiGetSettings: () => invoke<AiSettingsView>("ai_get_settings"),
+  aiSetSettings: (
+    baseUrl: string,
+    model: string,
+    apiKey?: string | null, // null => 清除; undefined => 保持
+  ) =>
+    invoke<void>("ai_set_settings", {
+      baseUrl,
+      model,
+      ...(apiKey === undefined ? {} : { apiKey }),
+    }),
 
   openVault: (vault: string) => invoke<TreeNode>("open_vault", { vault }),
   listTree: (vault: string) => invoke<TreeNode>("list_tree", { vault }),

@@ -20,6 +20,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
             commands::set_last_vault,
+            commands::ai_get_settings,
+            commands::ai_set_settings,
+            commands::ai_chat,
             commands::open_vault,
             commands::list_tree,
             commands::create_note,

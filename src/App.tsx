@@ -4,6 +4,8 @@ import TreePanel from "./components/TreePanel";
 import TabBar from "./components/TabBar";
 import EditorPane from "./components/EditorPane";
 import RightBar from "./components/RightBar";
+import AiPanel from "./components/AiPanel";
+import AiSettingsModal from "./components/AiSettingsModal";
 import Modals from "./components/Modals";
 import SwitchVaultModal from "./components/SwitchVaultModal";
 import VaultWelcome from "./components/VaultWelcome";
@@ -15,6 +17,7 @@ export default function App() {
   const toast = useStore((s) => s.toast);
   const modal = useStore((s) => s.modal);
   const showRight = useStore((s) => s.showRight);
+  const showAi = useStore((s) => s.showAi);
 
   /* 初始化：恢复上次笔记库 */
   useEffect(() => {
@@ -112,11 +115,13 @@ export default function App() {
           <div className="workspace">
             <EditorPane />
             {showRight && <RightBar />}
+            {showAi && <AiPanel />}
           </div>
         </div>
       </div>
 
       {modal?.kind === "switchVault" && <SwitchVaultModal onClose={() => useStore.getState().setModal(null)} />}
+      {modal?.kind === "aiSettings" && <AiSettingsModal onClose={() => useStore.getState().setModal(null)} />}
       <Modals />
       <div className="toast-wrap">
         {toast && (
