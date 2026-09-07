@@ -13,6 +13,7 @@ import { listener, listenerCtx } from "@milkdown/plugin-listener";
 import { clipboard } from "@milkdown/plugin-clipboard";
 import { cursor } from "@milkdown/plugin-cursor";
 import { trailing } from "@milkdown/plugin-trailing";
+import { mermaidBlockPlugin } from "./mermaidBlock";
 import { $prose } from "@milkdown/utils";
 import { nord } from "@milkdown/theme-nord";
 import { Plugin, PluginKey } from "@milkdown/prose/state";
@@ -154,7 +155,8 @@ export async function createWysiwyg(opts: CreateWysiwygOptions): Promise<EditorH
     .use(cursor)
     .use(trailing)
     .use(imageNodeViewPlugin(noteRel))
-    .use(wikiDecoPlugin());
+    .use(wikiDecoPlugin())
+    .use(mermaidBlockPlugin());
 
   await editor.create();
   return {

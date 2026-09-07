@@ -1641,3 +1641,41 @@ button {
   max-width: 45%;
 }
 
+/* ---------- Mermaid 实时预览 ---------- */
+
+.pn-codeblock {
+  margin: 8px 0;
+}
+.pn-codeblock > pre {
+  margin: 0;
+  border-radius: 8px 8px 0 0;
+}
+.pn-codeblock.pn-has-preview > pre {
+  border-bottom: 1px dashed var(--border-strong);
+}
+.pn-mermaid-preview {
+  background: #fffdf8;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 14px;
+  overflow-x: auto;
+  text-align: center;
+}
+.pn-mermaid-preview svg {
+  max-width: 100%;
+  height: auto;
+}
+.pn-mermaid-error {
+  text-align: left;
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono);
+}
+
