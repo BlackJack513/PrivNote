@@ -185,6 +185,18 @@ export function focusEditor(editor: Editor) {
   });
 }
 
+/** 取光标前 n 个字符的纯文本（用于 [[ 自动触发检测）。 */
+export function selectionTextSuffix(editor: Editor, n: number): string {
+  let suffix = "";
+  editor.action((ctx: Ctx) => {
+    const view = ctx.get(editorViewCtx);
+    if (!view) return;
+    const from = view.state.selection.from;
+    suffix = view.state.doc.textBetween(Math.max(0, from - n), from, "\n", " ");
+  });
+  return suffix;
+}
+
 /** 在光标处插入纯文本。 */
 export function insertText(editor: Editor, text: string) {
   editor.action((ctx: Ctx) => {

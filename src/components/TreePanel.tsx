@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BookOpen,
   ChevronRight,
+  Copy,
   ExternalLink,
   FilePlus2,
   FileText,
@@ -19,7 +20,8 @@ import {
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/api";
-import { dirOf, isMarkdown } from "../lib/paths";
+import { dirOf, toWindowsRel } from "../lib/paths";
+import { copyText } from "../lib/clipboard";
 import type { TreeNode } from "../lib/types";
 import { useStore } from "../store";
 
@@ -190,6 +192,12 @@ export default function TreePanel() {
               if (m === "note") setModal({ kind: "newNote", folder });
               else if (m === "folder") setModal({ kind: "newFolder", folder });
               else if (m === "import") void importInto(folder);
+              else if (m === "copyPath") {
+                const txt = toWindowsRel(n.rel);
+                void copyText(txt).then((ok) =>
+                  useStore.getState().toastShow(ok ? `已复制路径：${txt}` : "复制失败", ok ? "ok" : "error"),
+                );
+              }
               else if (m === "rename") setModal({ kind: "rename", rel: n.rel });
               else if (m === "delete") setModal({ kind: "confirmDelete", rel: n.rel });
               else if (m === "reveal" && vaultPath) void api.reveal(vaultPath, folder);
@@ -269,11 +277,18 @@ function Row(props: {
   );
 }
 
-type MenuAction = "note" | "folder" | "import" | "rename" | "delete" | "reveal" | "refresh";
+type MenuAction =
+  | "note"
+  | "folder"
+  | "import"
+  | "rename"
+  | "delete"
+  | "reveal"
+  | "refresh"
+  | "copyPath";
 
 function MenuBody({ node, onPick }: { node: TreeNode; onPick: (m: MenuAction) => void }) {
   const isDir = node.isDir;
-  const isNoteMd = !isDir && isMarkdown(node.rel);
   return (
     <>
       {isDir && (
@@ -284,7 +299,7 @@ function MenuBody({ node, onPick }: { node: TreeNode; onPick: (m: MenuAction) =>
           <div className="ctx-sep" />
         </>
       )}
-      {isNoteMd && <div className="ctx-item" onClick={() => onPick("note")} style={{ display: "none" }} />}
+      <div className="ctx-item" onClick={() => onPick("copyPath")}><Copy size={14} /> 复制路径</div>
       <div className="ctx-item" onClick={() => onPick("rename")}><Pencil size={14} /> 重命名</div>
       <div className="ctx-item" onClick={() => onPick("reveal")}><ExternalLink size={14} /> 在资源管理器中显示</div>
       <div className="ctx-item" onClick={() => onPick("refresh")}><RefreshCw size={14} /> 刷新目录</div>

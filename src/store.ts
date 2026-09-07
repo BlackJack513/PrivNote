@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { api, errMsg } from "./lib/api";
 import { baseName, dirOf } from "./lib/paths";
-import { summarizeLinksOut } from "./lib/wiki";
+import { resolveLinkTarget, summarizeLinksOut } from "./lib/wiki";
 import type {
   AppConfig,
   Backlink,
@@ -112,8 +112,7 @@ export const useStore = create<StoreState>()((set, get) => {
     }
     const tab = tabs.find((t) => t.rel === activeRel);
     if (!tab) return;
-    const existing = new Set(notes.map((n) => n.title.toLowerCase()));
-    const linksOut = summarizeLinksOut(tab.content, existing);
+    const linksOut = summarizeLinksOut(tab.content, notes);
     set({ linksOut });
     try {
       const backlinks = await api.backlinks(vaultPath, activeRel);
@@ -383,9 +382,9 @@ export const useStore = create<StoreState>()((set, get) => {
       const t = title.trim();
       if (!t) return;
       const notes = get().notes;
-      const found = notes.find((n) => n.title.toLowerCase() === t.toLowerCase());
-      if (found) {
-        void get().openNote(found.rel);
+      const foundRel = resolveLinkTarget(notes, t);
+      if (foundRel) {
+        void get().openNote(foundRel);
       } else {
         const activeRel = get().activeRel;
         set({

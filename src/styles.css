@@ -1587,3 +1587,57 @@ button {
   border-radius: 0;
 }
 
+/* ---------- 双链目录树选择器 ---------- */
+
+.link-pick-modal {
+  width: 520px;
+  max-width: 90vw;
+}
+.lp-tree {
+  max-height: 55vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 0;
+  background: #fff;
+}
+.lp-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding-right: 10px;
+  font-size: 13px;
+  color: var(--text-2);
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lp-row:hover {
+  background: var(--accent-soft);
+}
+.lp-chev {
+  flex: none;
+  color: var(--text-3);
+  transition: transform 0.12s ease;
+}
+.lp-chev.open {
+  transform: rotate(90deg);
+}
+.lp-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: none;
+  max-width: 60%;
+}
+.lp-rel {
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+  font-size: 11px;
+  flex: none;
+  max-width: 45%;
+}
+

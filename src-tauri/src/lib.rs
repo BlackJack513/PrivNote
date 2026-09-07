@@ -18,6 +18,7 @@ pub fn run() {
             protocol::serve(&shared, &path)
         })
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
             commands::set_last_vault,

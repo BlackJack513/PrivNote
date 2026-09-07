@@ -11,6 +11,16 @@ export function baseName(rel: string): string {
   return i < 0 ? rel : rel.slice(i + 1);
 }
 
+/** 去掉 .md/.markdown 扩展名（保留目录部分）。 */
+export function stripMdExt(rel: string): string {
+  return rel.replace(/\.(md|markdown)$/i, "");
+}
+
+/** 库内相对路径转 Windows 风格（反斜杠分隔），用于复制到剪贴板。 */
+export function toWindowsRel(rel: string): string {
+  return rel.split("/").join("\\");
+}
+
 export function extOf(rel: string): string {
   const b = baseName(rel);
   const i = b.lastIndexOf(".");

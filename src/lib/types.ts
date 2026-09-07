@@ -57,10 +57,11 @@ export interface TabState {
 }
 
 export interface WikiLinkOut {
-  title: string;
+  key: string;
   display: string;
   count: number;
   exists: boolean;
+  rel?: string;
 }
 
 export interface ModalState {

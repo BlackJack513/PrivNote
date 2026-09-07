@@ -1,12 +1,13 @@
-import { ArrowRightLeft, CornerDownRight, ExternalLink, Link2, Undo2 } from "lucide-react";
+import { ArrowRightLeft, CornerDownRight, Copy, ExternalLink, Link2, Undo2 } from "lucide-react";
 import { api } from "../lib/api";
+import { toWindowsRel } from "../lib/paths";
+import { copyText } from "../lib/clipboard";
 import { useStore } from "../store";
 
 export default function RightBar() {
   const vaultPath = useStore((s) => s.vaultPath);
   const activeRel = useStore((s) => s.activeRel);
   const tabs = useStore((s) => s.tabs);
-  const notes = useStore((s) => s.notes);
   const backlinks = useStore((s) => s.backlinks);
   const linksOut = useStore((s) => s.linksOut);
   const openNote = useStore((s) => s.openNote);
@@ -24,9 +25,6 @@ export default function RightBar() {
     );
   }
 
-  const findRelByTitle = (title: string) =>
-    notes.find((n) => n.title.toLowerCase() === title.toLowerCase())?.rel;
-
   return (
     <aside className="rightbar">
       <div className="rb-section" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -34,15 +32,27 @@ export default function RightBar() {
           <ArrowRightLeft size={13} /> 当前笔记
         </div>
         <div style={{ fontSize: 12, color: "var(--text-2)", wordBreak: "break-all" }}>{activeTab.rel}</div>
-        <button
-          className="action-btn"
-          style={{ alignSelf: "flex-start" }}
-          onClick={() => {
-            if (vaultPath) void api.reveal(vaultPath, activeRel);
-          }}
-        >
-          <ExternalLink size={13} /> 在资源管理器中显示
-        </button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            className="action-btn"
+            onClick={async () => {
+              const ok = await copyText(toWindowsRel(activeRel));
+              useStore.getState().toastShow(ok ? `已复制路径：${toWindowsRel(activeRel)}` : "复制失败", ok ? "ok" : "error");
+            }}
+            title="复制库内完整路径到剪贴板"
+          >
+            <Copy size={13} /> 复制路径
+          </button>
+          <button
+            className="action-btn"
+            onClick={() => {
+              if (vaultPath) void api.reveal(vaultPath, activeRel);
+            }}
+            title="在资源管理器中显示"
+          >
+            <ExternalLink size={13} /> 在资源管理器中显示
+          </button>
+        </div>
       </div>
 
       <div className="rb-section">
@@ -51,15 +61,15 @@ export default function RightBar() {
         </div>
         {linksOut.length === 0 && <div className="rb-empty">还没有 [[双链]]。</div>}
         {linksOut.map((l) => {
-          const rel = l.exists ? findRelByTitle(l.title) : undefined;
+          const rel = l.exists ? l.rel : undefined;
           return (
             <div
-              key={l.title}
+              key={l.key}
               className={`rb-item ${l.exists ? "" : "missing"}`}
-              title={l.exists ? `打开 ${rel}` : `创建笔记「${l.title}」`}
+              title={l.exists ? `打开 ${rel}` : `创建笔记「${l.key}」`}
               onClick={() => {
                 if (rel) void openNote(rel);
-                else setModal({ kind: "wikiCreate", target: l.title, folder: activeTab.rel.includes("/") ? activeTab.rel.slice(0, activeTab.rel.lastIndexOf("/")) : "" });
+                else setModal({ kind: "wikiCreate", target: l.key, folder: activeTab.rel.includes("/") ? activeTab.rel.slice(0, activeTab.rel.lastIndexOf("/")) : "" });
               }}
             >
               <CornerDownRight size={13} style={{ flex: "none", marginTop: 2 }} />

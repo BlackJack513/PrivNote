@@ -3,9 +3,12 @@ import {
   Bold,
   Braces,
   Check,
+  ChevronRight,
   Code,
+  Copy,
   FileText,
-  Heading3,
+  Folder,
+  FolderOpen,
   Image as ImageIcon,
   Italic,
   Link,
@@ -38,35 +41,37 @@ import {
 import { insertTableCommand, toggleStrikethroughCommand } from "@milkdown/preset-gfm";
 import { redoCommand, undoCommand } from "@milkdown/plugin-history";
 import { api } from "../lib/api";
-import { baseName, dirOf } from "../lib/paths";
+import { baseName, isMarkdown, stripMdExt, toWindowsRel } from "../lib/paths";
+import { copyText } from "../lib/clipboard";
 import { useStore } from "../store";
+import type { TreeNode } from "../lib/types";
 import {
   callCommand,
   createWysiwyg,
-  type EditorHandle,
-  focusEditor,
   insertImage,
   insertText,
+  selectionTextSuffix,
+  type EditorHandle,
 } from "../lib/editor/milkdown";
 
 export default function EditorPane() {
   const vaultPath = useStore((s) => s.vaultPath);
+  const tree = useStore((s) => s.tree);
   const tabs = useStore((s) => s.tabs);
   const activeRel = useStore((s) => s.activeRel);
   const setContent = useStore((s) => s.setContent);
   const setTabMode = useStore((s) => s.setTabMode);
   const jumpToWiki = useStore((s) => s.jumpToWiki);
   const toastShow = useStore((s) => s.toastShow);
-  const notes = useStore((s) => s.notes);
 
   const tab = tabs.find((t) => t.rel === activeRel);
   const [editorApi, setEditorApi] = useState<EditorHandle | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [busyImg, setBusyImg] = useState(false);
-  const [wikiOpen, setWikiOpen] = useState(false);
-  const [wikiQ, setWikiQ] = useState("");
   const [ctxReady, setCtxReady] = useState(false);
+  const [linkPicker, setLinkPicker] = useState<{ mode: "full" | "tail" } | null>(null);
+  const pickerOpenRef = useRef(false);
 
   const rel = tab?.rel ?? null;
   const mode = tab?.mode ?? "wysiwyg";
@@ -178,7 +183,7 @@ export default function EditorPane() {
     return () => window.removeEventListener("pn:image-file", h);
   }, [saveAndInsertImage]);
 
-  /* 双击/点击 双链 装饰文本跳转 */
+  /* 点击双链装饰文本跳转 */
   const onWikiClick = useCallback(
     (e: React.MouseEvent) => {
       const el = (e.target as HTMLElement).closest?.(".pn-wiki") as HTMLElement | null;
@@ -191,15 +196,104 @@ export default function EditorPane() {
     [jumpToWiki],
   );
 
+  /* ---------- 双链插入 ---------- */
+
+  const openLinkPicker = useCallback(
+    (m: "full" | "tail") => {
+      if (!rel) return;
+      setLinkPicker({ mode: m });
+    },
+    [rel],
+  );
+
+  const closeLinkPicker = useCallback(() => {
+    setLinkPicker(null);
+    pickerOpenRef.current = false;
+  }, []);
+
+  const insertWikiRel = useCallback(
+    (noteRel: string) => {
+      if (!rel) return;
+      const target = stripMdExt(noteRel);
+      const m = linkPicker?.mode ?? "full";
+      closeLinkPicker();
+      const text = m === "tail" ? `${target}]]` : `[[${target}]]`;
+      if (mode === "wysiwyg" && editorApi) {
+        insertText(editorApi.editor, text);
+      } else {
+        const ta = textareaRef.current;
+        if (ta) {
+          const next = ta.value.slice(0, ta.selectionStart) + text + ta.value.slice(ta.selectionEnd);
+          setContent(rel, next);
+          requestAnimationFrame(() => {
+            ta.focus();
+            const pos = ta.selectionStart + text.length;
+            ta.setSelectionRange(pos, pos);
+          });
+        } else {
+          setContent(rel, content + text);
+        }
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rel, mode, editorApi, linkPicker?.mode, content],
+  );
+
+  /* 写作模式输入 [[ 自动弹出 */
+  useEffect(() => {
+    if (!ctxReady || !editorApi || mode !== "wysiwyg") return;
+    const host = containerRef.current;
+    if (!host) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "[" || pickerOpenRef.current) return;
+      window.setTimeout(() => {
+        if (pickerOpenRef.current) return;
+        const suffix = selectionTextSuffix(editorApi.editor, 2);
+        if (suffix.endsWith("[[")) openLinkPicker("tail");
+      }, 0);
+    };
+    host.addEventListener("keydown", onKey);
+    return () => host.removeEventListener("keydown", onKey);
+  }, [ctxReady, editorApi, mode, openLinkPicker]);
+
+  /* 源码模式输入 [[ 自动弹出 */
+  const onSourceKeyUp = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "[" && !pickerOpenRef.current) {
+      const ta = e.currentTarget;
+      const before = ta.value.slice(0, ta.selectionStart);
+      if (before.endsWith("[[")) openLinkPicker("tail");
+    }
+  };
+
+  /* 全局快捷键：Ctrl+Shift+K 插入双链；Ctrl+Shift+C 复制路径 */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || !e.shiftKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "k") {
+        if (!rel) return;
+        e.preventDefault();
+        openLinkPicker("full");
+      } else if (k === "c") {
+        if (!rel) return;
+        e.preventDefault();
+        const txt = toWindowsRel(rel);
+        void copyText(txt).then((ok) => {
+          toastShow(ok ? `已复制路径：${txt}` : "复制失败", ok ? "ok" : "error");
+        });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [rel, openLinkPicker, toastShow]);
+
   /* ---------- 工具栏命令 ---------- */
   const run = (cmd: { key: unknown }, payload?: unknown) => {
     if (!editorApi) return;
     callCommand(editorApi.editor, cmd, payload);
-    focusEditor(editorApi.editor);
   };
 
   const headingSelect = (level: number | 0) => {
-    if (!editorApi) return;
     if (level === 0) run(turnIntoTextCommand);
     else run(wrapInHeadingCommand, level);
   };
@@ -221,36 +315,12 @@ export default function EditorPane() {
     void saveAndInsertImage({ name: baseName(p), absPath: p });
   };
 
-  const insertWiki = (title: string) => {
-    setWikiOpen(false);
-    setWikiQ("");
-    const text = `[[${title}]]`;
-    if (editorApi) insertText(editorApi.editor, text);
-    else {
-      const ta = textareaRef.current;
-      if (ta) {
-        const next = ta.value.slice(0, ta.selectionStart) + text + ta.value.slice(ta.selectionEnd);
-        setContent(rel!, next);
-        requestAnimationFrame(() => ta.focus());
-      }
-    }
+  const copyPath = async () => {
+    if (!rel) return;
+    const txt = toWindowsRel(rel);
+    const ok = await copyText(txt);
+    toastShow(ok ? `已复制路径：${txt}` : "复制失败", ok ? "ok" : "error");
   };
-
-  const newNoteFromWiki = async (title: string) => {
-    const folder = rel ? dirOf(rel) : "";
-    setWikiOpen(false);
-    setWikiQ("");
-    const created = await useStore.getState().createNoteAction(folder, title);
-    if (created) {
-      // 把链接补进原文
-      const t = useStore.getState().tabs.find((x) => x.rel === rel);
-      if (t) setContent(rel!, `${t.content}\n\n[[${title}]]\n`);
-    }
-  };
-
-  const pickable = notes.filter((n) => n.title.toLowerCase().includes(wikiQ.trim().toLowerCase()));
-  const exactPick = pickable.find((n) => n.title.toLowerCase() === wikiQ.trim().toLowerCase());
-  const canCreate = wikiQ.trim().length > 0 && !exactPick;
 
   /* ---------- 渲染 ---------- */
   if (!rel || !tab) {
@@ -272,6 +342,9 @@ export default function EditorPane() {
       <div className="note-path">
         <FileText size={12} />
         <span className="np-rel" title={rel}>{rel}</span>
+        <button className="icon-btn" style={{ width: 22, height: 22 }} title="复制库内完整路径到剪贴板（Ctrl+Shift+C）" onClick={() => void copyPath()}>
+          <Copy size={13} />
+        </button>
         {tab.saving ? (
           <span className="save-state dirty"><LoaderCircle size={11} className="spin" /> 保存中…</span>
         ) : tab.dirty ? (
@@ -320,9 +393,9 @@ export default function EditorPane() {
         <button className="tb-btn" title="插入链接" onClick={addLink}><Link size={15} /></button>
         <button className="tb-btn" title="插入图片（从磁盘选择并保存到库内）" onClick={() => void pickImageFile()}><ImageIcon size={15} /></button>
         <button
-          className={`tb-btn ${wikiOpen ? "on" : ""}`}
-          title="插入双链 [[笔记]]"
-          onClick={() => setWikiOpen((v) => !v)}
+          className={`tb-btn ${linkPicker ? "on" : ""}`}
+          title="从目录树选择笔记插入双链（快捷键 Ctrl+Shift+K，输入 [[ 也可触发）"
+          onClick={() => openLinkPicker("full")}
         >
           <Braces size={15} />
         </button>
@@ -335,18 +408,6 @@ export default function EditorPane() {
           <button className={mode === "wysiwyg" ? "active" : ""} onClick={() => setTabMode(rel, "wysiwyg")}>写作</button>
           <button className={mode === "source" ? "active" : ""} onClick={() => setTabMode(rel, "source")}>源码</button>
         </div>
-
-        {wikiOpen && (
-          <WikiPicker
-            q={wikiQ}
-            setQ={setWikiQ}
-            items={pickable}
-            canCreate={canCreate}
-            onPick={insertWiki}
-            onCreate={() => void newNoteFromWiki(wikiQ.trim())}
-            onClose={() => setWikiOpen(false)}
-          />
-        )}
       </div>
 
       {mode === "wysiwyg" ? (
@@ -367,6 +428,7 @@ export default function EditorPane() {
             className="source-area"
             value={content}
             onChange={(e) => setContent(rel, e.target.value)}
+            onKeyUp={onSourceKeyUp}
             onKeyDown={(e) => {
               if (e.key === "Tab") {
                 e.preventDefault();
@@ -379,77 +441,95 @@ export default function EditorPane() {
             spellCheck={false}
           />
           <div className="mode-hint" style={{ position: "absolute", bottom: 4, left: 14 }}>
-            源码模式：直接编辑 Markdown，切换回「写作」即时预览
+            源码模式：直接编辑 Markdown，输入 [[ 或按 Ctrl+Shift+K 插入双链；Ctrl+Shift+C 复制路径
           </div>
         </div>
+      )}
+
+      {linkPicker && tree && (
+        <LinkTreePicker
+          root={tree}
+          onPick={insertWikiRel}
+          onClose={closeLinkPicker}
+          pickerOpenRef={pickerOpenRef}
+        />
       )}
     </div>
   );
 }
 
-function WikiPicker(props: {
-  q: string;
-  setQ: (v: string) => void;
-  items: { rel: string; title: string }[];
-  canCreate: boolean;
-  onPick: (title: string) => void;
-  onCreate: () => void;
+/* ================= 目录树双链选择器 ================= */
+
+function LinkTreePicker(props: {
+  root: TreeNode;
+  onPick: (rel: string) => void;
   onClose: () => void;
+  pickerOpenRef: { current: boolean };
 }) {
-  const { q, setQ, items, canCreate, onPick, onCreate, onClose } = props;
-  return (
-    <>
-      <div
-        style={{ position: "fixed", inset: 0, zIndex: 50 }}
-        onMouseDown={(e) => {
-          e.preventDefault();
-          onClose();
-        }}
-      />
-      <div
-        className="ctx-menu"
-        style={{ position: "absolute", top: 42, left: 6, width: 300, zIndex: 60 }}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 2px 6px" }}>
-          <input
-            autoFocus
-            value={q}
-            placeholder="输入/筛选笔记标题"
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                if (items[0]) onPick(items[0].title);
-                else if (canCreate) onCreate();
-              } else if (e.key === "Escape") {
-                onClose();
-              }
-            }}
-            style={{ flex: 1, height: 28, border: "1px solid var(--border-strong)", borderRadius: 6, padding: "0 8px", fontSize: 13, outline: "none" }}
-            spellCheck={false}
-          />
-          <button className="icon-btn" onClick={onClose}><X size={14} /></button>
-        </div>
-        <div className="wiki-pick-list" style={{ border: "none", maxHeight: 260 }}>
-          {items.slice(0, 12).map((n) => (
-            <div key={n.rel} className="wiki-pick-item" onClick={() => onPick(n.title)}>
-              <Heading3 size={12} style={{ color: "var(--text-3)" }} />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13 }}>{n.title}</div>
-                <div className="wp-rel">{n.rel}</div>
-              </span>
-            </div>
-          ))}
-          {items.length === 0 && !canCreate && (
-            <div style={{ padding: "10px 8px", color: "var(--text-3)", fontSize: 12 }}>没有匹配的笔记</div>
+  const { root, onPick, onClose, pickerOpenRef } = props;
+  const [open, setOpen] = useState<Record<string, boolean>>({ [root.rel]: true });
+
+  useEffect(() => {
+    pickerOpenRef.current = true;
+    return () => {
+      pickerOpenRef.current = false;
+    };
+  }, [pickerOpenRef]);
+
+  const toggle = (rel: string) => setOpen((s) => ({ ...s, [rel]: !s[rel] }));
+
+  const renderNode = (node: TreeNode, depth: number) => {
+    const isFolder = node.isDir;
+    const isMd = !isFolder && isMarkdown(node.rel);
+    const expanded = !!open[node.rel];
+    return (
+      <div key={node.rel}>
+        <div
+          className={`lp-row ${!isFolder ? "lp-file" : ""}`}
+          style={{ paddingLeft: 10 + depth * 14 }}
+          onClick={() => {
+            if (isFolder) toggle(node.rel);
+            else if (isMd) onPick(node.rel);
+          }}
+          title={isFolder ? node.rel : node.rel}
+        >
+          {isFolder ? (
+            <ChevronRight size={13} className={`lp-chev ${expanded ? "open" : ""}`} />
+          ) : isMd ? (
+            <FileText size={13} style={{ color: "#475569", flex: "none", opacity: 0.8 }} />
+          ) : (
+            <span style={{ width: 13, flex: "none" }} />
           )}
-          {canCreate && (
-            <div className="wiki-pick-item" onClick={onCreate} style={{ color: "var(--accent)" }}>
-              <FileText size={13} /> 新建笔记「{q.trim()}」并插入链接
-            </div>
-          )}
+          {isFolder && (expanded ? <FolderOpen size={14} style={{ color: "#7c3aed", flex: "none" }} /> : <Folder size={14} style={{ color: "#7c3aed", flex: "none" }} />)}
+          <span className="lp-name">{node.name}</span>
+          {!isFolder && isMd && <span className="lp-rel">{stripMdExt(node.rel)}</span>}
         </div>
+        {isFolder && expanded && node.children.map((c) => renderNode(c, depth + 1))}
       </div>
-    </>
+    );
+  };
+
+  return (
+    <div className="modal-mask" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal link-pick-modal">
+        <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Braces size={16} style={{ color: "var(--accent)" }} /> 插入双链引用
+          <span style={{ fontSize: 12, fontWeight: 400, color: "var(--text-3)" }}>
+            从目录树选择一篇笔记（点击展开目录 / 点击笔记插入）
+          </span>
+          <button className="icon-btn" style={{ marginLeft: "auto" }} onClick={onClose}><X size={15} /></button>
+        </h3>
+        <div className="lp-tree">
+          {root.children.map((c) => renderNode(c, 0))}
+          {root.children.length === 0 && (
+            <div style={{ padding: 16, color: "var(--text-3)", fontSize: 13 }}>笔记库还没有内容</div>
+          )}
+        </div>
+        <p style={{ fontSize: 11.5, color: "var(--text-3)", margin: "8px 2px 0", lineHeight: 1.6 }}>
+          插入的是从根目录开始的完整路径引用（如 [[notes/react/useState]]，不带 .md），
+          点击目录/文件夹名称可展开收起。
+        </p>
+      </div>
+    </div>
   );
 }
