@@ -1011,6 +1011,13 @@ button {
 .ctx-item:disabled {
   color: var(--text-3);
 }
+.ctx-item.ctx-disabled {
+  color: var(--text-3);
+  cursor: default;
+}
+.ctx-item.ctx-disabled:hover {
+  background: transparent;
+}
 
 .toast-wrap {
   position: fixed;

@@ -58,6 +58,10 @@ interface StoreState {
 
   openNote: (rel: string, mode?: EditorMode) => Promise<void>;
   closeTab: (rel: string) => Promise<void>;
+  closeTabSide: (
+    anchorRel: string,
+    which: "left" | "right" | "others",
+  ) => Promise<void>;
   activateTab: (rel: string) => void;
   setTabMode: (rel: string, mode: EditorMode) => void;
   setContent: (rel: string, content: string) => void;
@@ -258,6 +262,25 @@ export const useStore = create<StoreState>()((set, get) => {
           activeRel = next ? next.rel : null;
         }
         return { tabs, activeRel };
+      });
+      void refreshRelations();
+    },
+
+    /** 批量关闭：以某个标签为锚点关闭其左侧 / 右侧 / 除它之外的所有标签。 */
+    closeTabSide: async (anchorRel, which) => {
+      const tabs = get().tabs;
+      const i = tabs.findIndex((t) => t.rel === anchorRel);
+      if (i < 0) return;
+      const doomed = tabs.filter((t, idx) => {
+        if (which === "left") return idx < i;
+        if (which === "right") return idx > i;
+        return t.rel !== anchorRel; // others
+      });
+      await Promise.all(doomed.map((d) => get().flushRel(d.rel)));
+      const keep = new Set([anchorRel]);
+      set({
+        tabs: tabs.filter((t) => keep.has(t.rel)),
+        activeRel: anchorRel,
       });
       void refreshRelations();
     },
