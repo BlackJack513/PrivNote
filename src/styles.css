@@ -1661,6 +1661,7 @@ button {
   border-bottom: 1px dashed var(--border-strong);
 }
 .pn-mermaid-preview {
+  position: relative;
   background: #fffdf8;
   border: 1px solid var(--border);
   border-top: none;
@@ -1673,6 +1674,26 @@ button {
   max-width: 100%;
   height: auto;
 }
+.pn-fs-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+.pn-fs-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: #fff;
+}
 .pn-mermaid-error {
   text-align: left;
   color: #991b1b;
@@ -1684,5 +1705,91 @@ button {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: var(--mono);
+}
+
+/* ---------- Mermaid 全屏查看器 ---------- */
+
+.pn-fs-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(15, 18, 26, 0.92);
+  user-select: none;
+  overflow: hidden;
+}
+.pn-fs-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  color: #eef0f5;
+  z-index: 5;
+}
+.pn-fs-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+.pn-fs-ctrl {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.pn-fs-ctrl button {
+  height: 30px;
+  min-width: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-radius: 7px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.pn-fs-ctrl button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.pn-fs-stage {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  overflow: hidden;
+}
+.pn-fs-stage:active {
+  cursor: grabbing;
+}
+.pn-fs-wrap {
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.pn-fs-holder {
+  display: inline-block;
+}
+.pn-fs-holder svg {
+  display: block;
+}
+.pn-fs-tip {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 3px 10px;
+  border-radius: 12px;
+}
+.pn-fs-holder .pn-mermaid-error {
+  margin: 60px auto;
+  max-width: 640px;
+  color: #fecaca;
+  background: rgba(153, 27, 27, 0.25);
+  border-color: rgba(254, 202, 202, 0.4);
 }
 

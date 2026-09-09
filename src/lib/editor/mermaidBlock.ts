@@ -1,4 +1,4 @@
-// Milkdown code_block 自定义视图：语言为 mermaid 时在代码块下方实时渲染图。
+// Milkdown code_block 自定义视图：语言为 mermaid 时在代码块下方实时渲染图，并提供全屏查看（缩放/平移）。
 import type { MilkdownPlugin } from "@milkdown/ctx";
 import { $prose } from "@milkdown/utils";
 import type { Node as PMNode } from "@milkdown/prose/model";
@@ -30,22 +30,191 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
-/** 串行渲染，避免 mermaid 并发冲突。 */
-function queueMermaidRender(preview: HTMLElement, code: string) {
+/** 串行渲染到容器；成功返回 true，失败在容器里显示错误并返回 false。 */
+function queueRenderInto(container: HTMLElement, code: string): Promise<boolean> {
   seq += 1;
   const id = `pn-mermaid-${seq}`;
-  renderChain = renderChain.then(async () => {
+  const p = renderChain.then(async () => {
     try {
       const api = await loadMermaid();
       const { svg } = await api.render(id, code);
-      preview.innerHTML = svg;
+      container.innerHTML = svg;
+      return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      preview.innerHTML = `<div class="pn-mermaid-error">Mermaid 解析失败：${escapeHtml(msg)}</div>`;
+      container.innerHTML = `<div class="pn-mermaid-error">Mermaid 解析失败：${escapeHtml(msg)}</div>`;
+      return false;
     }
   });
-  return renderChain;
+  renderChain = p.then(() => undefined);
+  return p;
 }
+
+/* ================= 全屏查看器（DOM 实现，滚轮缩放 + 拖拽平移） ================= */
+
+class FullscreenViewer {
+  private mask: HTMLDivElement | null = null;
+  private stage: HTMLDivElement | null = null;
+  private wrap: HTMLDivElement | null = null;
+  private holder: HTMLDivElement | null = null;
+  private tx = 0;
+  private ty = 0;
+  private k = 1;
+  private drag: { x: number; y: number; tx: number; ty: number } | null = null;
+  private onKey: (e: KeyboardEvent) => void;
+  private onWheel: (e: WheelEvent) => void;
+  private onDown: (e: PointerEvent) => void;
+  private onMove: (e: PointerEvent) => void;
+  private onUp: (e: PointerEvent) => void;
+
+  constructor(code: string) {
+    const mask = document.createElement("div");
+    mask.className = "pn-fs-mask";
+    mask.innerHTML = `
+      <div class="pn-fs-top">
+        <span class="pn-fs-title">Mermaid 全屏</span>
+        <div class="pn-fs-ctrl">
+          <button data-act="out" title="缩小">−</button>
+          <button data-act="reset" title="适应窗口">适应</button>
+          <button data-act="in" title="放大">+</button>
+          <button data-act="close" title="退出全屏 (Esc)">✕</button>
+        </div>
+      </div>
+      <div class="pn-fs-stage"></div>
+      <div class="pn-fs-tip">滚轮缩放 · 按住鼠标拖拽平移 · Esc 退出</div>`;
+    document.body.appendChild(mask);
+
+    const stage = mask.querySelector(".pn-fs-stage") as HTMLDivElement;
+    const wrap = document.createElement("div");
+    wrap.className = "pn-fs-wrap";
+    const holder = document.createElement("div");
+    holder.className = "pn-fs-holder";
+    holder.innerHTML = `<div class="pn-mermaid-error">正在渲染…</div>`;
+    wrap.appendChild(holder);
+    stage.appendChild(wrap);
+
+    mask.querySelectorAll(".pn-fs-ctrl button").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.onAction((b as HTMLButtonElement).dataset.act ?? "");
+      });
+    });
+    mask.addEventListener("pointerdown", (e) => {
+      if (e.target === mask) this.close();
+    });
+
+    this.mask = mask;
+    this.stage = stage;
+    this.wrap = wrap;
+    this.holder = holder;
+
+    this.onKey = (e) => {
+      if (e.key === "Escape") this.close();
+      else if (e.key === "+" || e.key === "=") this.zoomAtCenter(1.3);
+      else if (e.key === "-") this.zoomAtCenter(1 / 1.3);
+      else if (e.key.toLowerCase() === "r") this.fit();
+    };
+    this.onWheel = (e) => {
+      e.preventDefault();
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      this.zoomAt(e.clientX, e.clientY, factor);
+    };
+    this.onDown = (e) => {
+      if (e.button !== 0) return;
+      this.drag = { x: e.clientX, y: e.clientY, tx: this.tx, ty: this.ty };
+      stage.setPointerCapture(e.pointerId);
+    };
+    this.onMove = (e) => {
+      if (!this.drag) return;
+      this.apply(
+        this.drag.tx + (e.clientX - this.drag.x),
+        this.drag.ty + (e.clientY - this.drag.y),
+        this.k,
+      );
+    };
+    this.onUp = () => {
+      this.drag = null;
+    };
+
+    window.addEventListener("keydown", this.onKey);
+    stage.addEventListener("wheel", this.onWheel, { passive: false });
+    stage.addEventListener("pointerdown", this.onDown);
+    stage.addEventListener("pointermove", this.onMove);
+    stage.addEventListener("pointerup", this.onUp);
+    stage.addEventListener("pointercancel", this.onUp);
+
+    void queueRenderInto(holder, code).then(() => {
+      this.fit();
+    });
+  }
+
+  private apply(tx: number, ty: number, k: number) {
+    this.tx = tx;
+    this.ty = ty;
+    this.k = k;
+    if (this.wrap) {
+      this.wrap.style.transform = `translate(${tx}px, ${ty}px) scale(${k})`;
+    }
+  }
+
+  private onAction(act: string) {
+    if (act === "in") this.zoomAtCenter(1.3);
+    else if (act === "out") this.zoomAtCenter(1 / 1.3);
+    else if (act === "reset") this.fit();
+    else if (act === "close") this.close();
+  }
+
+  private zoomAtCenter(factor: number) {
+    if (!this.stage) return;
+    const r = this.stage.getBoundingClientRect();
+    this.zoomAt(r.left + r.width / 2, r.top + r.height / 2, factor);
+  }
+
+  private zoomAt(cx: number, cy: number, factor: number) {
+    if (!this.stage) return;
+    const r = this.stage.getBoundingClientRect();
+    const px = cx - r.left;
+    const py = cy - r.top;
+    const nk = Math.min(10, Math.max(0.1, this.k * factor));
+    const wx = (px - this.tx) / this.k;
+    const wy = (py - this.ty) / this.k;
+    this.apply(px - wx * nk, py - wy * nk, nk);
+  }
+
+  /** 把图适配到窗口中央。 */
+  private fit() {
+    if (!this.stage || !this.wrap || !this.holder) return;
+    const svg = this.holder.querySelector("svg") as SVGSVGElement | null;
+    if (!svg) return;
+    const r = this.stage.getBoundingClientRect();
+    const vw = r.width;
+    const vh = r.height;
+    // 复位后测量自然尺寸
+    this.wrap.style.transform = "";
+    svg.style.maxWidth = "none";
+    svg.style.height = "auto";
+    const s = svg.getBoundingClientRect();
+    const nw = s.width || vw;
+    const nh = s.height || vh;
+    const k = Math.min((vw - 100) / nw, (vh - 110) / nh, 1.5);
+    this.apply((vw - nw * k) / 2, (vh - nh * k) / 2, Math.max(k, 0.1));
+  }
+
+  close() {
+    window.removeEventListener("keydown", this.onKey);
+    if (this.stage) {
+      this.stage.removeEventListener("wheel", this.onWheel);
+      this.stage.removeEventListener("pointerdown", this.onDown);
+      this.stage.removeEventListener("pointermove", this.onMove);
+      this.stage.removeEventListener("pointerup", this.onUp);
+      this.stage.removeEventListener("pointercancel", this.onUp);
+    }
+    this.mask?.remove();
+    this.mask = null;
+  }
+}
+
+/* ================= 代码块视图 ================= */
 
 class MermaidCodeBlockView {
   dom: HTMLDivElement;
@@ -55,6 +224,7 @@ class MermaidCodeBlockView {
   private lastText = "";
   private timer: number | undefined;
   private destroyed = false;
+  private viewer: FullscreenViewer | null = null;
 
   constructor(node: PMNode) {
     this.dom = document.createElement("div");
@@ -80,33 +250,50 @@ class MermaidCodeBlockView {
 
     if (lang !== this.lang) {
       this.lang = lang;
-      this.contentDOM.classList.remove(`language-${this.lang}`);
-      this.contentDOM.classList.remove("language-mermaid");
-      this.contentDOM.className = "";
-      if (lang) this.contentDOM.classList.add(`language-${lang}`);
+      this.contentDOM.className = lang ? `language-${lang}` : "";
       this.dom.classList.toggle("pn-has-preview", lang === "mermaid");
       if (lang !== "mermaid") {
         this.preview.innerHTML = "";
+        this.preview.style.display = "";
       }
     }
     if (this.lang !== "mermaid") return;
-
-    if (immediate) {
-      if (text.trim() && text !== this.lastText) {
-        this.lastText = text;
-        void queueMermaidRender(this.preview, text);
-      }
+    if (!text.trim()) {
+      this.preview.innerHTML = "";
       return;
     }
+    if (text === this.lastText) return;
 
-    if (text.trim() && text !== this.lastText) {
-      this.lastText = text;
+    this.lastText = text;
+    if (immediate) {
+      void this.renderNow(text);
+    } else {
       if (this.timer) window.clearTimeout(this.timer);
       this.timer = window.setTimeout(() => {
         if (this.destroyed) return;
-        void queueMermaidRender(this.preview, text);
+        void this.renderNow(text);
       }, 450);
     }
+  }
+
+  private async renderNow(text: string) {
+    const ok = await queueRenderInto(this.preview, text);
+    if (ok && !this.destroyed) this.ensureFullscreenBtn();
+  }
+
+  private ensureFullscreenBtn() {
+    if (this.preview.querySelector(".pn-fs-btn")) return;
+    const btn = document.createElement("button");
+    btn.className = "pn-fs-btn";
+    btn.textContent = "全屏";
+    btn.title = "全屏查看（滚轮缩放 / 拖拽平移 / Esc 退出）";
+    btn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.viewer?.close();
+      this.viewer = new FullscreenViewer(this.lastText);
+    });
+    this.preview.appendChild(btn);
   }
 
   update(node: PMNode): boolean {
@@ -122,7 +309,6 @@ class MermaidCodeBlockView {
   }
 
   ignoreMutation(m: unknown): boolean {
-    // 预览区/SVG 的任何变化都不算文档编辑
     const target =
       m && typeof m === "object"
         ? (m as { target?: Node | null }).target
@@ -132,7 +318,6 @@ class MermaidCodeBlockView {
   }
 
   stopEvent(e: Event): boolean {
-    // 点击/操作预览区时不进入 PM 编辑
     const t = e.target as Node | null;
     return !!t && (t === this.preview || this.preview.contains(t));
   }
@@ -141,6 +326,8 @@ class MermaidCodeBlockView {
     this.destroyed = true;
     if (this.timer) window.clearTimeout(this.timer);
     this.preview.innerHTML = "";
+    this.viewer?.close();
+    this.viewer = null;
   }
 }
 
