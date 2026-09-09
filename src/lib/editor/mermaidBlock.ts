@@ -56,10 +56,13 @@ class FullscreenViewer {
   private mask: HTMLDivElement | null = null;
   private stage: HTMLDivElement | null = null;
   private wrap: HTMLDivElement | null = null;
-  private holder: HTMLDivElement | null = null;
   private tx = 0;
   private ty = 0;
   private k = 1;
+  private baseW = 0;
+  private baseH = 0;
+  private svgEl: SVGSVGElement | null = null;
+  private raf = 0;
   private drag: { x: number; y: number; tx: number; ty: number } | null = null;
   private onKey: (e: KeyboardEvent) => void;
   private onWheel: (e: WheelEvent) => void;
@@ -106,7 +109,6 @@ class FullscreenViewer {
     this.mask = mask;
     this.stage = stage;
     this.wrap = wrap;
-    this.holder = holder;
 
     this.onKey = (e) => {
       if (e.key === "Escape") this.close();
@@ -144,17 +146,52 @@ class FullscreenViewer {
     stage.addEventListener("pointercancel", this.onUp);
 
     void queueRenderInto(holder, code).then(() => {
+      this.svgEl = holder.querySelector("svg");
+      this.measureBase();
       this.fit();
     });
   }
 
+  /** 读取 SVG 自然像素尺寸作为缩放基准。 */
+  private measureBase() {
+    const svg = this.svgEl;
+    if (!svg) return;
+    svg.style.maxWidth = "none";
+    svg.style.width = "";
+    svg.style.height = "";
+    if (this.wrap) this.wrap.style.transform = "";
+    let nw = svg.getBoundingClientRect().width;
+    let nh = svg.getBoundingClientRect().height;
+    if (!(nw > 20 && nh > 20)) {
+      const vb = svg.viewBox.baseVal;
+      if (vb && vb.width > 0 && vb.height > 0) {
+        nw = vb.width;
+        nh = vb.height;
+      } else {
+        nw = 900;
+        nh = 600;
+      }
+    }
+    this.baseW = nw;
+    this.baseH = nh;
+  }
+
+  /** 平移用 CSS translate；缩放改为重设 SVG 像素尺寸（矢量重绘，文字保持清晰）。 */
   private apply(tx: number, ty: number, k: number) {
     this.tx = tx;
     this.ty = ty;
     this.k = k;
-    if (this.wrap) {
-      this.wrap.style.transform = `translate(${tx}px, ${ty}px) scale(${k})`;
-    }
+    if (this.raf) return;
+    this.raf = requestAnimationFrame(() => {
+      this.raf = 0;
+      if (this.wrap) {
+        this.wrap.style.transform = `translate(${tx}px, ${ty}px)`;
+      }
+      if (this.svgEl && this.baseW > 0) {
+        this.svgEl.style.width = `${this.baseW * k}px`;
+        this.svgEl.style.height = `${this.baseH * k}px`;
+      }
+    });
   }
 
   private onAction(act: string) {
@@ -175,33 +212,28 @@ class FullscreenViewer {
     const r = this.stage.getBoundingClientRect();
     const px = cx - r.left;
     const py = cy - r.top;
-    const nk = Math.min(10, Math.max(0.1, this.k * factor));
+    const nk = Math.min(12, Math.max(0.05, this.k * factor));
     const wx = (px - this.tx) / this.k;
     const wy = (py - this.ty) / this.k;
     this.apply(px - wx * nk, py - wy * nk, nk);
   }
 
-  /** 把图适配到窗口中央。 */
+  /** 把图按真实尺寸重排并适配到窗口中央。 */
   private fit() {
-    if (!this.stage || !this.wrap || !this.holder) return;
-    const svg = this.holder.querySelector("svg") as SVGSVGElement | null;
-    if (!svg) return;
+    if (!this.stage || this.baseW <= 0) return;
     const r = this.stage.getBoundingClientRect();
     const vw = r.width;
     const vh = r.height;
-    // 复位后测量自然尺寸
-    this.wrap.style.transform = "";
-    svg.style.maxWidth = "none";
-    svg.style.height = "auto";
-    const s = svg.getBoundingClientRect();
-    const nw = s.width || vw;
-    const nh = s.height || vh;
-    const k = Math.min((vw - 100) / nw, (vh - 110) / nh, 1.5);
-    this.apply((vw - nw * k) / 2, (vh - nh * k) / 2, Math.max(k, 0.1));
+    const k = Math.min((vw - 100) / this.baseW, (vh - 110) / this.baseH, 1.6);
+    this.apply((vw - this.baseW * k) / 2, (vh - this.baseH * k) / 2, Math.max(k, 0.05));
   }
 
   close() {
     window.removeEventListener("keydown", this.onKey);
+    if (this.raf) {
+      cancelAnimationFrame(this.raf);
+      this.raf = 0;
+    }
     if (this.stage) {
       this.stage.removeEventListener("wheel", this.onWheel);
       this.stage.removeEventListener("pointerdown", this.onDown);
