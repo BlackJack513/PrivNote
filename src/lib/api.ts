@@ -57,6 +57,8 @@ export const api = {
     invoke<string>("save_image", { vault, noteRel, fileName, data }),
   importImageFile: (vault: string, noteRel: string, absPath: string) =>
     invoke<string>("import_image_file", { vault, noteRel, absPath }),
+  resolveAsset: (vault: string, noteRel: string, src: string) =>
+    invoke<string | null>("resolve_asset", { vault, noteRel, src }),
 
   search: (vault: string, query: string) =>
     invoke<SearchHit[]>("search", { vault, query }),

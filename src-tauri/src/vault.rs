@@ -664,3 +664,206 @@ pub fn find_note_by_title(notes: &[NoteRef], target: &str) -> Option<String> {
         .find(|n| n.title.to_lowercase() == t)
         .map(|n| n.rel.clone())
 }
+
+/* ---------------- 图片等资源的引用解析 ---------------- */
+
+fn pct_decode_min(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hi = (bytes[i + 1] as char).to_digit(16);
+            let lo = (bytes[i + 2] as char).to_digit(16);
+            if let (Some(h), Some(l)) = (hi, lo) {
+                out.push((h * 16 + l) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// 规范化相对路径为组件序列（支持 .. 回退；越界部分自然丢弃）。
+fn norm_segments(rel: &str) -> Vec<String> {
+    let mut segs: Vec<String> = Vec::new();
+    for seg in rel.split(['/', '\\']) {
+        if seg.is_empty() || seg == "." {
+            continue;
+        }
+        if seg == ".." {
+            segs.pop();
+        } else {
+            segs.push(seg.to_string());
+        }
+    }
+    segs
+}
+
+fn is_external_ref(s: &str) -> bool {
+    let lower = s.to_ascii_lowercase();
+    lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("data:")
+        || lower.starts_with("privnote:")
+        || lower.starts_with("blob:")
+        || s.starts_with("//")
+}
+
+fn collect_matching(
+    root: &Path,
+    dir: &Path,
+    base_lower: &str,
+    out: &mut Vec<String>,
+    depth: usize,
+) {
+    if depth > 8 || out.len() > 20 {
+        return;
+    }
+    let Ok(rd) = fs::read_dir(dir) else { return };
+    for entry in rd.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+        let p = entry.path();
+        if p.is_dir() {
+            if SKIP_DIRS.contains(&name.as_str()) {
+                continue;
+            }
+            collect_matching(root, &p, base_lower, out, depth + 1);
+        } else if name.to_lowercase() == base_lower {
+            if let Ok(cp) = fs::canonicalize(&p) {
+                if cp.starts_with(root) {
+                    out.push(path_to_rel(root, &cp));
+                }
+            }
+        }
+    }
+}
+
+/// 把笔记里的图片引用（相对路径/裸文件名/带 .. 的路径）解析为库内真实存在的相对路径。
+/// 找不到返回 None；外部 URL 直接返回 None（由前端原样使用）。
+pub fn resolve_asset(vault: &str, note_rel: &str, src: &str) -> Result<Option<String>, String> {
+    let root = ensure_vault(vault)?;
+    let raw = src.trim();
+    if raw.is_empty() || is_external_ref(raw) {
+        return Ok(None);
+    }
+    let decoded = pct_decode_min(raw);
+    let norm = decoded.replace('\\', "/");
+    let note_dir = note_rel.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_default();
+    let base_name = Path::new(&norm)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    // 依次尝试：笔记同级目录 → 库根目录 → assets/ → 同级 assets/
+    let mut cands: Vec<PathBuf> = Vec::new();
+    let push_cand = |segs: Vec<String>, cands: &mut Vec<PathBuf>| {
+        let mut q = root.clone();
+        for s in segs {
+            q.push(s);
+        }
+        if !cands.contains(&q) {
+            cands.push(q);
+        }
+    };
+    if norm.starts_with('/') {
+        push_cand(norm_segments(&norm), &mut cands);
+    } else {
+        if !note_dir.is_empty() {
+            push_cand(norm_segments(&format!("{note_dir}/{norm}")), &mut cands);
+            push_cand(norm_segments(&format!("{note_dir}/assets/{norm}")), &mut cands);
+        }
+        push_cand(norm_segments(&norm), &mut cands);
+        if !base_name.is_empty() {
+            push_cand(vec!["assets".into(), base_name.clone()], &mut cands);
+        }
+    }
+
+    for c in &cands {
+        if c.is_file() {
+            if let Ok(cp) = fs::canonicalize(c) {
+                if cp.starts_with(&root) {
+                    return Ok(Some(path_to_rel(&root, &cp)));
+                }
+            }
+        }
+    }
+
+    // 最后兜底：全库搜索唯一同名文件（优先 assets/、其次路径最短）
+    if !base_name.is_empty() {
+        let mut hits: Vec<String> = Vec::new();
+        collect_matching(&root, &root, &base_name.to_lowercase(), &mut hits, 0);
+        if !hits.is_empty() {
+            hits.sort_by_key(|r| {
+                (
+                    if r.starts_with("assets/") { 0 } else { 1 },
+                    r.len(),
+                    r.clone(),
+                )
+            });
+            return Ok(Some(hits.remove(0)));
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp_vault(tag: &str) -> PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!("pn-test-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&p);
+        fs::create_dir_all(p.join("assets")).unwrap();
+        fs::create_dir_all(p.join("notes/react")).unwrap();
+        fs::write(p.join("assets").join("pic.png"), b"x").unwrap();
+        fs::write(p.join("notes/react").join("local.png"), b"x").unwrap();
+        fs::write(p.join("notes/react").join("a.md"), b"# a").unwrap();
+        p
+    }
+
+    #[test]
+    fn resolve_asset_variants() {
+        let v = tmp_vault("resolve");
+        let vault = v.to_string_lossy().into_owned();
+
+        // 裸文件名 → assets/
+        assert_eq!(
+            resolve_asset(&vault, "root.md", "pic.png").unwrap(),
+            Some("assets/pic.png".into())
+        );
+        // assets/ 前缀
+        assert_eq!(
+            resolve_asset(&vault, "root.md", "assets/pic.png").unwrap(),
+            Some("assets/pic.png".into())
+        );
+        // 子目录笔记的同级文件
+        assert_eq!(
+            resolve_asset(&vault, "notes/react/a.md", "local.png").unwrap(),
+            Some("notes/react/local.png".into())
+        );
+        // 子目录笔记用 ../ 回到 assets
+        assert_eq!(
+            resolve_asset(&vault, "notes/react/a.md", "../../assets/pic.png").unwrap(),
+            Some("assets/pic.png".into())
+        );
+        // 反斜杠写法
+        assert_eq!(
+            resolve_asset(&vault, "root.md", "assets\\pic.png").unwrap(),
+            Some("assets/pic.png".into())
+        );
+        // URL 编码空格/中文（此文件不存在，应回退并在全库找不到 → None）
+        assert_eq!(resolve_asset(&vault, "root.md", "nope%20x.png").unwrap(), None);
+        // 外部 URL 不处理
+        assert_eq!(resolve_asset(&vault, "root.md", "https://a/b.png").unwrap(), None);
+
+        let _ = fs::remove_dir_all(&v);
+    }
+}

@@ -570,6 +570,14 @@ button {
   border-radius: 8px;
   box-shadow: var(--shadow-sm);
 }
+.milkdown .pn-image.pn-image-missing {
+  min-width: 140px;
+  min-height: 64px;
+  border: 1px dashed var(--danger);
+  background: #fef2f2;
+  box-shadow: none;
+  opacity: 0.85;
+}
 .milkdown .ProseMirror-selectednode {
   outline: 2px solid var(--accent);
   border-radius: 8px;

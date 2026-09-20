@@ -48,18 +48,29 @@ export function joinRel(...parts: string[]): string {
   return segs.join("/");
 }
 
-/** 由笔记 rel 与其内部引用的相对 src，解析出 vault 内绝对 rel。 */
+/** 由笔记 rel 与其内部引用的相对 src，解析出 vault 内相对 rel。 */
 export function resolveNoteRef(noteRel: string, src: string): string | null {
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(src) || src.startsWith("//")) return null;
-  const base = src.startsWith("/") ? src.slice(1) : joinRel(dirOf(noteRel), src);
-  return base;
+  const s = src.trim().replace(/\\/g, "/");
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(s) || s.startsWith("//")) return null;
+  return s.startsWith("/") ? s.slice(1) : joinRel(dirOf(noteRel), s);
 }
 
-/** 将 vault rel 转为 privnote://vault/... 显示 URL。 */
+/**
+ * 把库内相对路径转成可显示的 URL。
+ * 注意：Tauri v2 在 Windows/Android 上把自定义协议服务为 `http://<scheme>.localhost/<path>`，
+ * macOS/Linux 才是 `<scheme>://localhost/<path>`；用错形式图片会加载失败。
+ */
 export function toAssetUrl(rel: string): string {
-  const segs = rel.split("/").filter(Boolean);
-  const enc = segs.map((s) => encodeURIComponent(s)).join("/");
-  return `privnote://vault/${enc}`;
+  const segs = rel
+    .split("/")
+    .filter(Boolean)
+    .map((s) => encodeURIComponent(s))
+    .join("/");
+  const isWindows =
+    typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
+  return isWindows
+    ? `http://privnote.localhost/${segs}`
+    : `privnote://localhost/${segs}`;
 }
 
 /** 把 src（笔记内部引用）解析为可直接显示的 URL；解析不了返回原值。 */

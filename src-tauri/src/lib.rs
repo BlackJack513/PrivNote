@@ -36,6 +36,7 @@ pub fn run() {
             commands::import_files,
             commands::save_image,
             commands::import_image_file,
+            commands::resolve_asset,
             commands::search,
             commands::backlinks,
             commands::list_notes,

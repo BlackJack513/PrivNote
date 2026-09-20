@@ -19,7 +19,8 @@ import { nord } from "@milkdown/theme-nord";
 import { Plugin, PluginKey } from "@milkdown/prose/state";
 import { Decoration, DecorationSet } from "@milkdown/prose/view";
 import type { Node as PMNode } from "@milkdown/prose/model";
-import { displaySrc, resolveNoteRef } from "../paths";
+import { displaySrc, resolveNoteRef, toAssetUrl } from "../paths";
+import { api } from "../api";
 import "@milkdown/theme-nord/style.css";
 
 export interface CreateWysiwygOptions {
@@ -36,14 +37,17 @@ export interface EditorHandle {
 }
 
 /* ------------------------------------------------------------------ */
-/* 图片 NodeView：把笔记内相对路径解析成 privnote:// 可显示 URL          */
+/* 图片 NodeView：解析相对引用为可显示的 privnote 资源 URL，并做健壮回退    */
 /* ------------------------------------------------------------------ */
 
 class AssetImageView {
   dom: HTMLImageElement;
   private noteRel: string;
+  private vaultPath: string;
+  private token = 0;
 
-  constructor(node: PMNode, noteRel: string) {
+  constructor(node: PMNode, vaultPath: string, noteRel: string) {
+    this.vaultPath = vaultPath;
     this.noteRel = noteRel;
     this.dom = document.createElement("img");
     this.dom.className = "pn-image";
@@ -54,10 +58,41 @@ class AssetImageView {
     const raw = (node.attrs.src as string) || "";
     const alt = (node.attrs.alt as string) || "";
     if (this.dom.getAttribute("alt") !== alt) this.dom.setAttribute("alt", alt);
-    const target = displaySrc(resolveNoteRef(this.noteRel, raw), raw);
-    if (target && this.dom.getAttribute("src") !== target) {
-      this.dom.setAttribute("src", target);
+
+    const rel = resolveNoteRef(this.noteRel, raw);
+    if (rel === null) {
+      // 外部 URL / data: 等原样使用
+      if (this.dom.getAttribute("src") !== raw) this.dom.setAttribute("src", raw);
+      this.dom.classList.remove("pn-image-missing");
+      this.dom.removeAttribute("title");
+      return;
     }
+
+    // 先按“相对笔记目录”直接给出一个候选 URL（多数情况立即可显示）
+    const guess = displaySrc(rel, raw);
+    if (guess && this.dom.getAttribute("src") !== guess) {
+      this.dom.setAttribute("src", guess);
+    }
+
+    // 再由后端做一次真实解析（处理裸文件名、assets/、../ 等写法）
+    const my = ++this.token;
+    void api
+      .resolveAsset(this.vaultPath, this.noteRel, raw)
+      .then((real) => {
+        if (my !== this.token) return;
+        if (real) {
+          const url = toAssetUrl(real);
+          if (this.dom.getAttribute("src") !== url) this.dom.setAttribute("src", url);
+          this.dom.classList.remove("pn-image-missing");
+          this.dom.removeAttribute("title");
+        } else {
+          this.dom.classList.add("pn-image-missing");
+          this.dom.title = `找不到图片：${raw}（请确认文件在笔记库内）`;
+        }
+      })
+      .catch(() => {
+        /* 忽略解析失败，保留候选 URL */
+      });
   }
 
   update(node: PMNode): boolean {
@@ -79,13 +114,13 @@ class AssetImageView {
   }
 }
 
-function imageNodeViewPlugin(noteRel: string): MilkdownPlugin {
+function imageNodeViewPlugin(vaultPath: string, noteRel: string): MilkdownPlugin {
   return $prose(
     () =>
       new Plugin({
         props: {
           nodeViews: {
-            image: (node: PMNode) => new AssetImageView(node, noteRel),
+            image: (node: PMNode) => new AssetImageView(node, vaultPath, noteRel),
           },
         },
       }),
@@ -136,7 +171,7 @@ function wikiDecoPlugin(): MilkdownPlugin {
 /* ------------------------------------------------------------------ */
 
 export async function createWysiwyg(opts: CreateWysiwygOptions): Promise<EditorHandle> {
-  const { root, markdown, noteRel, onMarkdown } = opts;
+  const { root, markdown, vaultPath, noteRel, onMarkdown } = opts;
 
   const editor = Editor.make()
     .config((ctx: Ctx) => {
@@ -154,7 +189,7 @@ export async function createWysiwyg(opts: CreateWysiwygOptions): Promise<EditorH
     .use(clipboard)
     .use(cursor)
     .use(trailing)
-    .use(imageNodeViewPlugin(noteRel))
+    .use(imageNodeViewPlugin(vaultPath, noteRel))
     .use(wikiDecoPlugin())
     .use(mermaidBlockPlugin());
 

@@ -296,6 +296,16 @@ pub fn import_image_file(
     vault::save_image_from_file(&vault, &note_rel, &abs_path)
 }
 
+/// 把笔记内的图片引用解析为库内真实相对路径（供前端显示图片）。
+#[tauri::command]
+pub fn resolve_asset(
+    vault: String,
+    note_rel: String,
+    src: String,
+) -> Result<Option<String>, String> {
+    vault::resolve_asset(&vault, &note_rel, &src)
+}
+
 #[tauri::command]
 pub fn search(vault: String, query: String) -> Result<Vec<vault::SearchHit>, String> {
     vault::search(&vault, &query)
